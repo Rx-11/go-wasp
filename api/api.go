@@ -2,20 +2,21 @@ package api
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 
-	"github.com/Rx-11/go-wasp/internal"
+	"github.com/Rx-11/go-wasp/executor"
 	"github.com/Rx-11/go-wasp/registry"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type Server struct {
-	reg registry.Registry
+	reg        registry.Registry
+	dispatcher *executor.Dispatcher
 }
 
-func NewServer(reg registry.Registry) *Server {
-	return &Server{reg: reg}
+func NewServer(reg registry.Registry, disp *executor.Dispatcher) *Server {
+	return &Server{reg: reg, dispatcher: disp}
 }
 
 func (s *Server) Routes() *fiber.App {
@@ -38,10 +39,12 @@ func (s *Server) uploadFunction(c *fiber.Ctx) error {
 	}
 	defer file.Close()
 
-	data, err := ioutil.ReadAll(file)
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to read file")
 	}
+
+	fmt.Println(data[:100])
 
 	name := c.FormValue("name")
 	if name == "" {
@@ -57,18 +60,21 @@ func (s *Server) uploadFunction(c *fiber.Ctx) error {
 
 func (s *Server) invokeFunction(c *fiber.Ctx) error {
 	name := c.Params("name")
-	wasmBytes, err := s.reg.GetFunction(name)
-	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "function not found")
+
+	var input map[string]any
+	if len(c.Body()) > 0 {
+		if err := c.BodyParser(&input); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid JSON input")
+		}
+	} else {
+		input = map[string]any{}
 	}
 
-	input := make(map[string]interface{})
-	if err := c.BodyParser(&input); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON input")
-	}
-
-	out, err := internal.ExecuteWASM(wasmBytes, input)
+	out, err := s.dispatcher.Invoke(name, input)
 	if err != nil {
+		if err == executor.ErrQueueFull {
+			return fiber.NewError(fiber.StatusTooManyRequests, "queue full for function")
+		}
 		return fiber.NewError(fiber.StatusInternalServerError, fmt.Sprintf("execution error: %v", err))
 	}
 
