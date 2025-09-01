@@ -44,8 +44,6 @@ func (s *Server) uploadFunction(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to read file")
 	}
 
-	fmt.Println(data[:100])
-
 	name := c.FormValue("name")
 	if name == "" {
 		name = fileHeader.Filename

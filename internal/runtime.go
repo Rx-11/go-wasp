@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/Rx-11/go-wasp/constants"
@@ -46,15 +45,6 @@ func ExecuteWASM(wasmBytes []byte, input map[string]any) (map[string]any, error)
 		return nil, fmt.Errorf("instantiate module: %w; stderr=%s", err, stderr.String())
 	}
 	defer mod.Close(ctx)
-
-	start := mod.ExportedFunction("_start")
-	if start == nil {
-		return nil, errors.New("module has no _start export (WASI entrypoint required)")
-	}
-
-	if _, err := start.Call(ctx); err != nil {
-		return nil, fmt.Errorf("invoke _start: %w; stderr=%s", err, stderr.String())
-	}
 
 	var out map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
